@@ -1,0 +1,80 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger bei Tags, die mit "v" beginnen
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout Repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up Java
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: '17'
+
+      # Build the project
+      - name: Build project
+        run: |
+          ./gradlew clean build
+
+      # Save the artifact
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: build/distributions/*.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout Repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Download build artifacts
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+
+      # Extract version from gradle.properties
+      - uses: guillermocalvo/gradle-properties@v3
+        id: properties
+        with:
+          output_file: ${{ github.output }}
+
+      # Create GitHub Release
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: |
+            Auto generated release for ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+      # Upload artifact to Release
+      - name: Upload artifact to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: prometheus-exporter-${{ steps.properties.outputs.version }}.zip
+          asset_name: prometheus-exporter-${{ steps.properties.outputs.version }}.zip
+          asset_content_type: application/zip
